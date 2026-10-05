@@ -1,0 +1,271 @@
+-- UNFAIR HARD-LOCK HEAD AIMBOT (Rivals)
+-- Sticky head lock • free camera movement • no freeze • Rayfield + Key System
+-- + HitChance (miss chance) + Body Part selector (from GitHub patterns: Stefanuk12/Aiming + common Rivals/universal aimbot scripts)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- ==================== KEY SYSTEM ====================
+local correctKey = "runas /user:Administrator cmd"
+local keyAccepted = false
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Vexora hub",
+   LoadingTitle = "for the best aim",
+   LoadingSubtitle = "made by nnp_rk",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "AIMBOT",
+      FileName = "Config"
+   },
+   KeySystem = true,
+   KeySettings = {
+      Title = "UNFAIR Head Lock",
+      Subtitle = "Key System",
+      Note = "Enter the key to continue",
+      FileName = "UnfairKey",
+      SaveKey = true,
+      GrabKeyFromSite = false,
+      Key = {correctKey}
+   }
+})
+
+-- ==================== MAIN SCRIPT ====================
+local MainTab = Window:CreateTab("Aimbot", 4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
+
+local Config = {
+    Enabled = true,
+    FOV = 220,
+    Prediction = 0.165,
+    TeamCheck = false,
+    VisibleCheck = false,
+    ShowFOV = true,
+    Sticky = true,
+    MaxDistance = 2000,
+    Strength = 1.0,
+    HitChance = 100,          -- 100 = always hit, lower = more misses
+    AimPart = "Head"          -- selectable body part
+}
+
+local currentTarget = nil
+
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.NumSides = 64
+FOVCircle.Radius = Config.FOV
+FOVCircle.Filled = false
+FOVCircle.Color = Color3.fromRGB(255, 30, 60)
+FOVCircle.Visible = Config.ShowFOV
+FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+MainTab:CreateToggle({
+   Name = "ENABLE (unfair mode)",
+   CurrentValue = true,
+   Flag = "Enabled",
+   Callback = function(v) Config.Enabled = v end
+})
+
+MainTab:CreateToggle({
+   Name = "Show FOV",
+   CurrentValue = true,
+   Flag = "ShowFOV",
+   Callback = function(v)
+      Config.ShowFOV = v
+      FOVCircle.Visible = v
+   end
+})
+
+MainTab:CreateToggle({
+   Name = "Sticky Lock",
+   CurrentValue = true,
+   Flag = "Sticky",
+   Callback = function(v) Config.Sticky = v end
+})
+
+-- Body part selector
+MainTab:CreateDropdown({
+   Name = "Aim Body Part",
+   Options = {"Head", "UpperTorso", "HumanoidRootPart", "Torso", "LowerTorso"},
+   CurrentOption = {"Head"},
+   MultipleOptions = false,
+   Flag = "AimPart",
+   Callback = function(Option)
+      Config.AimPart = Option[1] or "Head"
+   end
+})
+
+SettingsTab:CreateSlider({
+   Name = "FOV Size",
+   Range = {80, 500},
+   Increment = 10,
+   CurrentValue = 220,
+   Flag = "FOV",
+   Callback = function(v)
+      Config.FOV = v
+      FOVCircle.Radius = v
+   end
+})
+
+SettingsTab:CreateSlider({
+   Name = "Prediction",
+   Range = {0, 0.35},
+   Increment = 0.01,
+   CurrentValue = 0.165,
+   Flag = "Pred",
+   Callback = function(v) Config.Prediction = v end
+})
+
+SettingsTab:CreateSlider({
+   Name = "Lock Strength",
+   Range = {0.3, 1},
+   Increment = 0.05,
+   CurrentValue = 1,
+   Flag = "Strength",
+   Callback = function(v) Config.Strength = v end
+})
+
+-- HitChance / Miss Chance
+SettingsTab:CreateSlider({
+   Name = "Hit Chance %",
+   Range = {0, 100},
+   Increment = 1,
+   CurrentValue = 100,
+   Flag = "HitChance",
+   Callback = function(v) Config.HitChance = v end
+})
+
+SettingsTab:CreateToggle({
+   Name = "Team Check",
+   CurrentValue = false,
+   Flag = "Team",
+   Callback = function(v) Config.TeamCheck = v end
+})
+
+SettingsTab:CreateToggle({
+   Name = "Visible Check (walls)",
+   CurrentValue = false,
+   Flag = "Vis",
+   Callback = function(v) Config.VisibleCheck = v end
+})
+
+local function isAlive(plr)
+    local char = plr.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    return hum and hum.Health > 0
+end
+
+local function isVisible(part)
+    if not Config.VisibleCheck then return true end
+    local origin = Camera.CFrame.Position
+    local dir = (part.Position - origin)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+    local result = workspace:Raycast(origin, dir, params)
+    return not result or result.Instance:IsDescendantOf(part.Parent)
+end
+
+-- HitChance calculator (Stefanuk12 / ZeroPercentSoul pattern)
+local function CalcChance(percentage)
+    percentage = math.floor(percentage)
+    local chance = math.floor(Random.new():NextNumber(0, 1) * 100) / 100
+    return chance <= (percentage / 100)
+end
+
+local function getAimPart(char)
+    if not char then return nil end
+    local partName = Config.AimPart or "Head"
+    local part = char:FindFirstChild(partName)
+    if part then return part end
+    -- fallbacks for R6 / R15
+    if partName == "UpperTorso" or partName == "Torso" then
+        return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+    end
+    if partName == "LowerTorso" then
+        return char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso")
+    end
+    return char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getBestHead()
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    local best = nil
+    local bestDist = Config.FOV
+
+    if Config.Sticky and currentTarget and currentTarget.Parent then
+        local plr = Players:GetPlayerFromCharacter(currentTarget.Parent)
+        if plr and isAlive(plr) then
+            local part = getAimPart(currentTarget.Parent)
+            if part then
+                local screen, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen and screen.Z > 0 then
+                    local dist = (Vector2.new(screen.X, screen.Y) - center).Magnitude
+                    if dist < Config.FOV * 1.4 and isVisible(part) then
+                        return part
+                    end
+                end
+            end
+        end
+    end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and isAlive(plr) then
+            if Config.TeamCheck and plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then
+                continue
+            end
+            local char = plr.Character
+            local part = getAimPart(char)
+            if part then
+                local screen, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen and screen.Z > 0 then
+                    local dist = (Vector2.new(screen.X, screen.Y) - center).Magnitude
+                    local worldDist = (part.Position - Camera.CFrame.Position).Magnitude
+                    if dist < bestDist and worldDist < Config.MaxDistance and isVisible(part) then
+                        bestDist = dist
+                        best = part
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+RunService:BindToRenderStep("UnfairHeadLock", Enum.RenderPriority.Camera.Value + 1, function()
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    FOVCircle.Radius = Config.FOV
+    FOVCircle.Visible = Config.ShowFOV and Config.Enabled
+
+    if not Config.Enabled then
+        currentTarget = nil
+        return
+    end
+
+    -- Miss chance check
+    if not CalcChance(Config.HitChance) then
+        return
+    end
+
+    local head = getBestHead()
+    currentTarget = head
+
+    if head then
+        local pos = head.Position
+        local vel = head.AssemblyLinearVelocity or Vector3.zero
+        local predicted = pos + (vel * Config.Prediction)
+
+        local current = Camera.CFrame
+        local target = CFrame.lookAt(current.Position, predicted)
+
+        Camera.CFrame = current:Lerp(target, Config.Strength)
+    end
+end)
+
+Rayfield:LoadConfiguration()
+print("UNFAIR mode loaded. free look + hard lock + HitChance + Body Part selector.")
